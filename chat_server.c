@@ -1,13 +1,3 @@
-/* When the read end of a pipe or socket goes away, 
-fputs() and fflush() will not generate SIGPIPE immediately. 
-The bytes are buffered in the operating system and will be 
-thrown away eventually. However, the standard I/O calls will 
-return without error for a while. Eventually, they will return 
-with errors and they may or may not generate SIGPIPE. Your best 
-bet is to catch and ignore SIGPIPE and always test return 
-values for determine when the read end of the pipe has gone 
-away. */
-
 /* For example, in your jtalk_server program, you will have to have
 a data structure that holds all of the current connections.
 When someone attaches to the socket, you add the connection to
@@ -31,7 +21,8 @@ to block on the mutex if they really don't have to. */
 #include "jval.h"
 #include "fields.h"
 
-void *server_thread(void *arg);
+void *chat_room_thread(void *arg);
+void *client_thread(void *arg);
 
 typedef struct Client {
 	char *client_name;
@@ -44,7 +35,7 @@ typedef struct ChatRoom {
 	char *room_name;
 	Dllist messages;
 	Dllist clients;
-	pthread_mutex_t *mutex;
+	pthread_mutex_t *lock;
 	pthread_cond_t *cond;
 } ChatRoom;
 
@@ -59,7 +50,9 @@ int main(int argc, char **argv) {
 	int sock;
 	int fd;
 	pthread_mutex_t lock;
+	pthread_cond_t cond;
 	ChatRoom *chat_room;
+	Client *client;
 
 	if(argc < 4) {
 		fprintf(stderr, "usage: chat_server\n");
@@ -68,6 +61,7 @@ int main(int argc, char **argv) {
 
 	jrb = make_jrb();
 	pthread_mutex_init(&lock, NULL);
+	pthread_cond_init(&cond, NULL);
 
 	sock = serve_socket(atoi(argv[2]));
 
@@ -87,19 +81,62 @@ int main(int argc, char **argv) {
 		);
 		chat_room->messages = new_dllist();
 		chat_room->clients = new_dllist();
-		chat_room->mutex = (pthread_mutex_t *) malloc(sizeof(pthread_mutex_t));
-		chat_room->cond = (pthread_cond_t *) malloc(sizeof(pthread_cond_t *));
+		chat_room->lock = (pthread_mutex_t *) malloc(sizeof(pthread_mutex_t));
+		chat_room->lock = &lock;
+		chat_room->cond = (pthread_cond_t *) malloc(sizeof(pthread_cond_t));
+		chat_room->cond = &cond;
 	}
 
-  jrb_traverse(tmp, jrb) {
-    chat_room = (ChatRoom *) tmp->val.v;
-    printf("%s\n", chat_room->room_name);
-  }
+
+//   jrb_traverse(tmp, jrb) {
+//     chat_room = (ChatRoom *) tmp->val.v;
+//     printf("%s\n", chat_room->room_name);
+//   }
+
+	while(1) {
+		fd = accept_connection(sock);
+		client = (Client *) malloc(sizeof(Client));
+		client->fd = fd;
+		pthread_create(&tid, NULL, client_thread, client);
+	}
+	pthread_exit(NULL);
 
     return 0;
 }
 
-void *server_thread(void *arg) {
+void *chat_room_thread(void *arg) {
+
+	return NULL;
+}
+
+void *client_thread(void *arg) {
+	Client *client;
+	ChatRoom *chat_room;
+	JRB tmp;
+	client = (Client *) arg;
+	client->client_name = malloc(50);
+
+	char *chat_room_name = malloc(100);
+
+	client->fin = fdopen(client->fd, "r");
+	client->fout = fdopen(client->fd, "w");
+
+	fputs("Chat Rooms:\n\n", client->fout);
+	jrb_traverse(tmp, jrb) {
+		chat_room = (ChatRoom *) tmp->val.v;
+		fputs(chat_room->room_name, client->fout);
+		fputs(":\n", client->fout);
+	}
+	fputs("\n", client->fout);
+	fflush(client->fout);
+
+	fputs("Enter your chat name (no spaces):\n", client->fout);
+	fflush(client->fout);
+	fgets(client->client_name, 50, client->fin);
+
+	fputs("Enter chat room:\n", client->fout);
+	fflush(client->fout);
+	fgets(chat_room_name, 100, client->fin);
 
 	return NULL;
 }
