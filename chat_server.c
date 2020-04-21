@@ -40,7 +40,7 @@ typedef struct ChatRoom {
 } ChatRoom;
 
 /*  jrb is a global variable whoese key is the name 
-	of chat room and value is the instance of ChatRoom*
+	of a chat room and value is the instance of ChatRoom*
 */
 JRB jrb;
 
@@ -70,10 +70,12 @@ int main(int argc, char **argv) {
 		malloc the needed instance variables and data structures
 		for each chat room.
 	*/
+	pthread_t *chat_room_tids;
+	chat_room_tids = malloc(sizeof(chat_room_tids) * (argc - 3));
 	int i;
 	for(i = 3; i < argc; i++) {
 		chat_room = (ChatRoom *) malloc(sizeof(ChatRoom));
-		chat_room->room_name = malloc(strlen(argv[i]) + 1);
+		chat_room->room_name = malloc(strlen(argv[i])+1);
 		strcpy(chat_room->room_name, argv[i]);
 		jrb_insert_str(jrb, 
 					   chat_room->room_name, 
@@ -85,6 +87,7 @@ int main(int argc, char **argv) {
 		chat_room->lock = &lock;
 		chat_room->cond = (pthread_cond_t *) malloc(sizeof(pthread_cond_t));
 		chat_room->cond = &cond;
+		pthread_create(chat_room_tids+(i-3), NULL, chat_room_thread, chat_room);
 	}
 
 
@@ -105,6 +108,8 @@ int main(int argc, char **argv) {
 }
 
 void *chat_room_thread(void *arg) {
+	ChatRoom *chat_room;
+	chat_room = (ChatRoom *) arg;
 
 	return NULL;
 }
@@ -137,6 +142,13 @@ void *client_thread(void *arg) {
 	fputs("Enter chat room:\n", client->fout);
 	fflush(client->fout);
 	fgets(chat_room_name, 100, client->fin);
+
+	jrb_traverse(tmp, jrb) {
+		chat_room = (ChatRoom *) tmp->val.v;
+		if(strncmp(chat_room->room_name, chat_room_name, strlen(chat_room->room_name)) == 0) {
+			
+		}
+	}
 
 	return NULL;
 }
