@@ -106,6 +106,25 @@ int main(int argc, char **argv) {
 void *chat_room_thread(void *arg) {
 	ChatRoom *chat_room;
 	chat_room = (ChatRoom *) arg;
+	Dllist tmp;
+	char *message;
+
+	pthread_mutex_lock(chat_room->lock);
+
+	while(1) {
+		pthread_cond_wait(chat_room->cond, chat_room->lock);
+
+		dll_traverse(tmp, chat_room->messages) {
+			message = tmp->val.s;
+
+			free(tmp->val.s);
+		}
+
+		free_dllist(chat_room->messages);
+		chat_room->messages = new_dllist();
+	}
+
+	pthread_mutex_unlock(chat_room->lock);
 
 	// one loop while(1)
 	// gets msg, traverse list, send msg to everyone
@@ -158,7 +177,8 @@ void *client_thread(void *arg) {
 		chat_room = (ChatRoom *) tmp_j->val.v;
 		if(strcmp(chat_room->room_name, chat_room_name) == 0) {
 			sprintf(buf, "%s has joined\n", client->client_name);
-
+			dll_append(chat_room->messages, new_jval_s(strdup(buf)));
+			
 			pthread_mutex_lock(chat_room->lock);
 			// hold on to chat room
 			// access chat_room list of clients
