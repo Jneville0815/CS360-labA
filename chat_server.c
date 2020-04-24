@@ -174,5 +174,3 @@ void *client_thread(void *arg) {
 
 	return NULL;
 }
-
-
