@@ -1,16 +1,8 @@
-/* For example, in your jtalk_server program, you will have to have
-a data structure that holds all of the current connections.
-When someone attaches to the socket, you add the connection to
-that data structure. When someone quits his/her jtalk session,
-then you delete the connection from the data structure. And
-when someone sends a line to the server, you will traverse 
-the data structure, and send the line to all the connections. 
-You will need to protect the data structure with a mutex. 
-For example, you do not want to be traversing the data 
-structure and deleting a connection at the same time. One
-thing you want to think about is how to protect the data 
-structure, but at the same time not cause too many threads 
-to block on the mutex if they really don't have to. */
+/*  Jimmy Neville
+	labA -- chat_server.c
+	CS360 -- Systems Programming
+	Spring 2020
+*/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,9 +13,11 @@ to block on the mutex if they really don't have to. */
 #include "jval.h"
 #include "fields.h"
 
+/* Function prototypes */
 void *chat_room_thread(void *arg);
 void *client_thread(void *arg);
 
+/* Contains information specific to each client */
 typedef struct Client {
 	char *client_name;
 	FILE *fin;
@@ -31,6 +25,7 @@ typedef struct Client {
 	int fd;
 } Client;
 
+/* Contains information specific to each chat room */
 typedef struct ChatRoom {
 	char *room_name;
 	Dllist messages;
@@ -52,6 +47,7 @@ int main(int argc, char **argv) {
 	ChatRoom *chat_room;
 	Client *client;
 
+	/* If all command line arguments not specified, error and exit */
 	if(argc < 3) {
 		fprintf(stderr, "usage: chat_server\n");
 		exit(1);
@@ -59,12 +55,14 @@ int main(int argc, char **argv) {
 
 	jrb = make_jrb();
 
+	/* Serve the port specified on command line */
 	sock = serve_socket(atoi(argv[1]));
 
 	/*  Create an instance of chat_room for each chat room name 
 		specified on the command line. Also initialize/
 		malloc the needed instance variables and data structures
-		for each chat room.
+		for each chat room. Lastly, create a thread for each
+		chat room.
 	*/
 	pthread_t *chat_room_tids;
 	chat_room_tids = malloc(sizeof(chat_room_tids) * (argc - 2));
@@ -86,12 +84,9 @@ int main(int argc, char **argv) {
 		pthread_create(chat_room_tids+(i-2), NULL, chat_room_thread, chat_room);
 	}
 
-
-//   jrb_traverse(tmp, jrb) {
-//     chat_room = (ChatRoom *) tmp->val.v;
-//     printf("%s\n", chat_room->room_name);
-//   }
-
+	/*  Wait for clients to connect to server, and when they do, create 
+		a new client thread.
+	*/
 	while(1) {
 		fd = accept_connection(sock);
 		client = (Client *) malloc(sizeof(Client));
@@ -103,6 +98,16 @@ int main(int argc, char **argv) {
     return 0;
 }
 
+/*  Thread is blocked on a condition variable. When the 
+	condition variable is unblocked, that is the indication 
+	that the server has received input from a client. When 
+	the chat room thread receives a message, it traverses the 
+	list of clients and sends the message to each client.
+	After sending the messages it deletes the list of
+	messages and makes a new list. When it is done processing 
+	the list, it should wait on the condition variable again.
+	There is one thread for each chat room.
+*/
 void *chat_room_thread(void *arg) {
 	ChatRoom *chat_room;
 	Client *client;
@@ -137,6 +142,17 @@ void *chat_room_thread(void *arg) {
 	return NULL;
 }
 
+/*  Client thread prints information about the chat room
+	and asks user for name and for the chat room they 
+	would like to enter. If EOF is discovered at any
+	time while reading input, the client will exit.
+	Thread will typically be blocked reading from the 
+	socket. When it receives a line of text from the 
+	socket, it will construct the proper string from it,
+	put that string onto the chat room's list, and 
+	signal the chat room server. There is one thread for
+	each client.
+*/
 void *client_thread(void *arg) {
 	Client *client;
 	ChatRoom *chat_room;
