@@ -158,11 +158,11 @@ void *client_thread(void *arg) {
 	jrb_traverse(tmp_j, jrb) {
 		chat_room = (ChatRoom *) tmp_j->val.v;
 		fputs(chat_room->room_name, client->fout);
-		fputs(": ", client->fout);
+		fputs(":", client->fout);
 		dll_traverse(tmp_d, chat_room->clients) {
 			tmp_client = (Client *) tmp_d->val.v;
-			fputs(tmp_client->client_name, client->fout);
 			fputs(" ", client->fout);
+			fputs(tmp_client->client_name, client->fout);
 		}
 		fputs("\n", client->fout);
 	}
