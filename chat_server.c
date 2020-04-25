@@ -105,8 +105,10 @@ int main(int argc, char **argv) {
 
 void *chat_room_thread(void *arg) {
 	ChatRoom *chat_room;
+	Client *client;
 	chat_room = (ChatRoom *) arg;
-	Dllist tmp;
+
+	Dllist tmp, tmp2;
 	char *message;
 
 	pthread_mutex_lock(chat_room->lock);
@@ -117,6 +119,12 @@ void *chat_room_thread(void *arg) {
 		dll_traverse(tmp, chat_room->messages) {
 			message = tmp->val.s;
 
+			dll_traverse(tmp2, chat_room->clients) {
+				client = (Client *) tmp2->val.v;
+				fputs(message, client->fout);
+				fflush(client->fout);
+			}
+
 			free(tmp->val.s);
 		}
 
@@ -126,9 +134,6 @@ void *chat_room_thread(void *arg) {
 
 	pthread_mutex_unlock(chat_room->lock);
 
-	// one loop while(1)
-	// gets msg, traverse list, send msg to everyone
-	// sits there and sends messages when it gets one
 	return NULL;
 }
 
@@ -141,6 +146,7 @@ void *client_thread(void *arg) {
 	client->client_name = malloc(50);
 
 	char *buf = malloc(500);
+	char *msg = malloc(500);
 
 	char *chat_room_name = malloc(100);
 
@@ -165,12 +171,22 @@ void *client_thread(void *arg) {
 
 	fputs("Enter your chat name (no spaces):\n", client->fout);
 	fflush(client->fout);
-	fgets(client->client_name, 50, client->fin);
+	if(fgets(client->client_name, 50, client->fin) == NULL) {
+		fclose(client->fin);
+		fclose(client->fout);
+		client->fout = NULL;
+		pthread_exit(NULL);
+	}
 	client->client_name[strlen(client->client_name) - 1] = 0;
 
 	fputs("Enter chat room:\n", client->fout);
 	fflush(client->fout);
-	fgets(chat_room_name, 100, client->fin);
+	if(fgets(chat_room_name, 100, client->fin) == NULL) {
+		fclose(client->fin);
+		fclose(client->fout);
+		client->fout = NULL;
+		pthread_exit(NULL);		
+	}
 	chat_room_name[strlen(chat_room_name) - 1] = 0;
 
 	jrb_traverse(tmp_j, jrb) {
@@ -180,9 +196,7 @@ void *client_thread(void *arg) {
 			dll_append(chat_room->messages, new_jval_s(strdup(buf)));
 			
 			pthread_mutex_lock(chat_room->lock);
-			// hold on to chat room
-			// access chat_room list of clients
-			// append to list
+
 			dll_append(chat_room->clients, new_jval_v((void *) client));
 			pthread_cond_signal(chat_room->cond);
 			pthread_mutex_unlock(chat_room->lock);
@@ -190,7 +204,46 @@ void *client_thread(void *arg) {
 		}
 	}
 
-	
+	while(1) {
+		if(fgets(msg, 500, client->fin) == NULL) {
+			sprintf(buf, "%s has left\n", client->client_name);
+			fclose(client->fin);
+
+			if(client->fout != NULL) {
+				fclose(client->fout);
+				client->fout = NULL;
+
+				pthread_mutex_lock(chat_room->lock);
+
+				dll_append(chat_room->messages, new_jval_s(strdup(buf)));
+
+				pthread_cond_signal(chat_room->cond);
+
+				dll_traverse(tmp_d, chat_room->clients) {
+					tmp_client = (Client *) tmp_d->val.v;
+					if(tmp_client == client) {
+						free(client->client_name);
+						free(tmp_d->val.v);
+						dll_delete_node(tmp_d);
+						break;
+					}
+				}
+				pthread_mutex_unlock(chat_room->lock);
+
+				pthread_exit(NULL);
+			}
+		}
+
+		sprintf(buf, "%s: ", client->client_name);
+		strcat(buf, msg);
+
+		pthread_mutex_lock(chat_room->lock);
+		dll_append(chat_room->messages, new_jval_s(strdup(buf)));
+
+		pthread_cond_signal(chat_room->cond);
+		pthread_mutex_unlock(chat_room->lock);
+	}
 
 	return NULL;
 }
+
